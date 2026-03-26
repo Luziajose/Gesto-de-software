@@ -31,6 +31,11 @@ import {
   Trash2,
   LogOut,
   Bell,
+  Smartphone,
+  Battery,
+  Signal,
+  AlertCircle,
+  Check,
   CheckCircle,
   FileDown,
   FileUp,
@@ -46,17 +51,23 @@ import {
   LayoutGrid,
   Share2,
   Star,
+  Save,
   Fingerprint,
   HelpCircle,
   X,
-  Filter
+  Filter,
+  Rocket,
+  Edit2,
+  BookOpen,
+  MessageCircle,
+  ChevronDown
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import Lottie from 'lottie-react';
 
 // --- Types ---
-type Tab = 'home' | 'dashboard' | 'payload' | 'host' | 'dns' | 'config' | 'ip' | 'ssh' | 'hwid' | 'tether' | 'notes' | 'v2ray' | 'iphunter' | 'addserver' | 'addtweaks' | 'settings' | 'tools' | 'help' | 'exportconfig' | 'importconfig';
+type Tab = 'home' | 'dashboard' | 'payload' | 'host' | 'dns' | 'config' | 'ip' | 'ssh' | 'hwid' | 'tether' | 'notes' | 'v2ray' | 'iphunter' | 'addserver' | 'addtweaks' | 'settings' | 'tools' | 'help' | 'exportconfig' | 'importconfig' | 'custom' | 'injector';
 type ConnectionMode = 'direct' | 'payload' | 'host' | 'sni' | 'dnstt' | 'import' | 'udp' | 'tcp';
 
 interface Server {
@@ -99,6 +110,39 @@ interface AppContextType {
   setConnectionMode: (v: ConnectionMode) => void;
   customSetup: boolean;
   setCustomSetup: (v: boolean) => void;
+  connectionConfig: ConnectionConfig;
+  setConnectionConfig: (v: ConnectionConfig) => void;
+  skipSplash: boolean;
+  setSkipSplash: (v: boolean) => void;
+  injectorSettings: InjectorSettings;
+  setInjectorSettings: (v: InjectorSettings) => void;
+  dnsSettings: DNSSettings;
+  setDnsSettings: (v: DNSSettings) => void;
+  isDnsModalOpen: boolean;
+  setIsDnsModalOpen: (v: boolean) => void;
+}
+
+interface DNSSettings {
+  type: 'default' | 'google' | 'cloudflare' | 'alibaba' | 'custom';
+  customDns1: string;
+  customDns2: string;
+  enabled: boolean;
+}
+
+interface InjectorSettings {
+  tunnelMode: 'ssh' | 'v2ray' | 'hysteria' | 'shadowsocks';
+  connectVia: 'direct' | 'dnstt' | 'proxy_http' | 'http_obfs' | 'tls_ssl_proxy' | 'tls_ssl_obfs' | 'tls_ssl_stunnel';
+  customPayload: boolean;
+}
+
+interface ConnectionConfig {
+  payload: string;
+  host: string;
+  sni: string;
+  dnstt: {
+    nameserver: string;
+    publicKey: string;
+  };
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -115,6 +159,28 @@ const AppProvider = ({ children }: { children: React.ReactNode }) => {
   const [isTesting, setIsTesting] = useState(false);
   const [connectionMode, setConnectionMode] = useState<ConnectionMode>('sni');
   const [customSetup, setCustomSetup] = useState(true);
+  const [connectionConfig, setConnectionConfig] = useState<ConnectionConfig>({
+    payload: 'CONNECT [host_port] [protocol][crlf]Host: [host][crlf][crlf]',
+    host: 'google.com',
+    sni: 'google.com',
+    dnstt: {
+      nameserver: '1.1.1.1',
+      publicKey: '0000000000000000000000000000000000000000000000000000000000000000'
+    }
+  });
+  const [skipSplash, setSkipSplash] = useState(false);
+  const [injectorSettings, setInjectorSettings] = useState<InjectorSettings>({
+    tunnelMode: 'ssh',
+    connectVia: 'tls_ssl_stunnel',
+    customPayload: false
+  });
+  const [dnsSettings, setDnsSettings] = useState<DNSSettings>({
+    type: 'cloudflare',
+    customDns1: '123.123.123.123',
+    customDns2: '123.123.123.123',
+    enabled: true
+  });
+  const [isDnsModalOpen, setIsDnsModalOpen] = useState(false);
   
   const [selectedServer, setSelectedServer] = useState<string>('ao');
   const [selectedPort, setSelectedPort] = useState<number>(443);
@@ -178,7 +244,12 @@ const AppProvider = ({ children }: { children: React.ReactNode }) => {
       runSpeedTest,
       isTesting,
       connectionMode, setConnectionMode,
-      customSetup, setCustomSetup
+      customSetup, setCustomSetup,
+      connectionConfig, setConnectionConfig,
+      skipSplash, setSkipSplash,
+      injectorSettings, setInjectorSettings,
+      dnsSettings, setDnsSettings,
+      isDnsModalOpen, setIsDnsModalOpen
     }}>
       {children}
     </AppContext.Provider>
@@ -408,19 +479,130 @@ const Sidebar = ({ activeTab, setActiveTab, onClose }: { activeTab: Tab, setActi
   );
 };
 
-const Dashboard = ({ setActiveTab }: { setActiveTab: (t: Tab) => void }) => {
+const ConnectionConfigModal = ({ 
+  isOpen, 
+  onClose, 
+  mode, 
+  config, 
+  setConfig 
+}: { 
+  isOpen: boolean, 
+  onClose: () => void, 
+  mode: ConnectionMode, 
+  config: ConnectionConfig, 
+  setConfig: (v: ConnectionConfig) => void 
+}) => {
+  if (!isOpen) return null;
+
+  const getTitle = () => {
+    switch (mode) {
+      case 'payload': return 'Configurar Payload';
+      case 'host': return 'Configurar Host';
+      case 'sni': return 'Configurar SNI';
+      case 'dnstt': return 'Configurar DNSTT';
+      default: return 'Configurar';
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+      <div className="android-card w-full max-w-md flex flex-col overflow-hidden animate-in zoom-in duration-200">
+        <div className="p-6 border-b border-white/5 flex justify-between items-center bg-surface">
+          <div className="flex items-center gap-3">
+            <Settings className="w-6 h-6 text-primary" />
+            <h3 className="font-bold uppercase tracking-widest text-sm text-white">{getTitle()}</h3>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full transition-colors">
+            <X className="w-5 h-5 text-outline" />
+          </button>
+        </div>
+        
+        <div className="p-6 space-y-4">
+          {mode === 'payload' && (
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-primary uppercase tracking-widest px-1">Payload</label>
+              <textarea 
+                value={config.payload}
+                onChange={(e) => setConfig({ ...config, payload: e.target.value })}
+                className="android-input h-32 resize-none font-mono text-xs"
+                placeholder="Insira seu payload aqui..."
+              />
+            </div>
+          )}
+
+          {mode === 'host' && (
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-primary uppercase tracking-widest px-1">Host Header</label>
+              <input 
+                type="text"
+                value={config.host}
+                onChange={(e) => setConfig({ ...config, host: e.target.value })}
+                className="android-input"
+                placeholder="exemplo.com"
+              />
+            </div>
+          )}
+
+          {mode === 'sni' && (
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-primary uppercase tracking-widest px-1">SNI (Server Name Indication)</label>
+              <input 
+                type="text"
+                value={config.sni}
+                onChange={(e) => setConfig({ ...config, sni: e.target.value })}
+                className="android-input"
+                placeholder="m.facebook.com"
+              />
+            </div>
+          )}
+
+          {mode === 'dnstt' && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-primary uppercase tracking-widest px-1">Nameserver</label>
+                <input 
+                  type="text"
+                  value={config.dnstt.nameserver}
+                  onChange={(e) => setConfig({ ...config, dnstt: { ...config.dnstt, nameserver: e.target.value } })}
+                  className="android-input"
+                  placeholder="ns.exemplo.com"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-primary uppercase tracking-widest px-1">Public Key</label>
+                <input 
+                  type="text"
+                  value={config.dnstt.publicKey}
+                  onChange={(e) => setConfig({ ...config, dnstt: { ...config.dnstt, publicKey: e.target.value } })}
+                  className="android-input font-mono text-xs"
+                  placeholder="Chave pública de 64 caracteres"
+                />
+              </div>
+            </div>
+          )}
+
+          <button 
+            onClick={onClose}
+            className="android-btn-primary w-full py-4 rounded-2xl shadow-lg mt-4"
+          >
+            Salvar Configuração
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const CustomOnView = () => {
   const { 
-    isConnected, setIsConnected, 
-    timer, ipInfo, 
-    selectedServer, setSelectedServer,
-    selectedPort, setSelectedPort,
-    isPortModalOpen, setIsPortModalOpen,
-    isServerModalOpen, setIsServerModalOpen,
-    isHelpModalOpen, setIsHelpModalOpen,
-    customSetup, setCustomSetup,
     connectionMode, setConnectionMode,
-    speed, runSpeedTest, isTesting
+    customSetup, setCustomSetup,
+    connectionConfig, setConnectionConfig,
+    skipSplash, setSkipSplash
   } = useApp();
+
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+  const [editingMode, setEditingMode] = useState<ConnectionMode | null>(null);
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -434,6 +616,288 @@ const Dashboard = ({ setActiveTab }: { setActiveTab: (t: Tab) => void }) => {
       setConnectionMode('import');
     }
   };
+
+  const connectionModes = [
+    { id: 'direct', title: 'Direct Connection', subtitle: 'Internet' },
+    { id: 'payload', title: 'Custom Payload', subtitle: 'TCP Mode' },
+    { id: 'host', title: 'Custom Host Header', subtitle: 'HTTP Mode' },
+    { id: 'sni', title: 'Custom SNI', subtitle: 'SSL, TLS Mode' },
+    { id: 'dnstt', title: 'DNSTT Tunnel', subtitle: 'DNS Mode' },
+    { id: 'import', title: 'Imported Config', subtitle: '.HAT File' },
+  ];
+
+  const handleModeClick = (modeId: string) => {
+    if (modeId === 'import') {
+      fileInputRef.current?.click();
+    } else {
+      setConnectionMode(modeId as ConnectionMode);
+      // Open config modal for custom modes
+      if (['payload', 'host', 'sni', 'dnstt'].includes(modeId)) {
+        setEditingMode(modeId as ConnectionMode);
+        setIsConfigModalOpen(true);
+      }
+    }
+  };
+
+  return (
+    <div className="space-y-6 pb-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="android-card space-y-6">
+        <div className="flex items-center gap-3 border-b border-white/5 pb-4">
+          <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+            <Settings className="w-6 h-6 text-primary" />
+          </div>
+          <h2 className="text-lg font-bold text-white">Modo de Conexão</h2>
+        </div>
+
+        <div className="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5">
+          <div className="space-y-1">
+            <p className="text-sm font-bold text-white uppercase tracking-wider">Pular Animação</p>
+            <p className="text-[10px] text-outline font-medium uppercase">Não mostrar tela inicial</p>
+          </div>
+          <button 
+            onClick={() => setSkipSplash(!skipSplash)}
+            className={`px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all shadow-lg ${
+              skipSplash ? 'bg-primary text-on-primary shadow-primary/20' : 'bg-white/5 text-outline'
+            }`}
+          >
+            {skipSplash ? 'ATIVADO' : 'DESATIVADO'}
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5">
+          <div className="space-y-1">
+            <p className="text-sm font-bold text-white uppercase tracking-wider">Configuração Customizada</p>
+            <p className="text-[10px] text-outline font-medium uppercase">Habilitar modos avançados</p>
+          </div>
+          <button 
+            onClick={() => setCustomSetup(!customSetup)}
+            className={`px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all shadow-lg ${
+              customSetup ? 'bg-primary text-on-primary shadow-primary/20' : 'bg-white/5 text-outline'
+            }`}
+          >
+            {customSetup ? 'Custom ON' : 'Custom OFF'}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3">
+          <input type="file" ref={fileInputRef} onChange={handleImportConfig} className="hidden" accept=".hat,.config,.vpn" />
+          {connectionModes.map((mode) => (
+            <button
+              key={mode.id}
+              onClick={() => handleModeClick(mode.id)}
+              className={`android-list-item border-2 transition-all duration-300 ${
+                connectionMode === mode.id 
+                  ? 'border-primary bg-primary/10 shadow-lg shadow-primary/5' 
+                  : 'border-transparent bg-white/5 hover:bg-white/10'
+              }`}
+            >
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${
+                connectionMode === mode.id ? 'bg-primary text-on-primary' : 'bg-surface text-outline'
+              }`}>
+                <Rocket className="w-6 h-6" />
+              </div>
+              <div className="flex-1 text-left">
+                <p className={`text-sm font-bold ${connectionMode === mode.id ? 'text-primary' : 'text-white'}`}>{mode.title}</p>
+                <p className="text-[10px] text-outline font-medium uppercase tracking-wider mt-0.5">{mode.subtitle}</p>
+              </div>
+              {connectionMode === mode.id && (
+                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }}>
+                  <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                    <CheckCircle className="w-4 h-4 text-white" />
+                  </div>
+                </motion.div>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {editingMode && (
+        <ConnectionConfigModal 
+          isOpen={isConfigModalOpen}
+          onClose={() => setIsConfigModalOpen(false)}
+          mode={editingMode}
+          config={connectionConfig}
+          setConfig={setConnectionConfig}
+        />
+      )}
+    </div>
+  );
+};
+
+const TopTabs = ({ activeTab, setActiveTab, onOpenDrawer, onOpenHelp }: { activeTab: Tab, setActiveTab: (t: Tab) => void, onOpenDrawer: () => void, onOpenHelp: () => void }) => {
+  const { 
+    setConnectionConfig, setInjectorSettings, setDnsSettings, 
+    setSelectedServer, setSelectedPort, setConnectionMode, setCustomSetup 
+  } = useApp();
+  const [showMenu, setShowMenu] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+
+  const handleClearSettings = () => {
+    setConnectionConfig({
+      payload: 'CONNECT [host_port] [protocol][crlf]Host: [host][crlf][crlf]',
+      host: 'google.com',
+      sni: 'google.com',
+      dnstt: {
+        nameserver: '1.1.1.1',
+        publicKey: '0000000000000000000000000000000000000000000000000000000000000000'
+      }
+    });
+    setInjectorSettings({
+      tunnelMode: 'ssh',
+      connectVia: 'tls_ssl_stunnel',
+      customPayload: false
+    });
+    setDnsSettings({
+      type: 'cloudflare',
+      customDns1: '123.123.123.123',
+      customDns2: '123.123.123.123',
+      enabled: true
+    });
+    setSelectedServer('ao');
+    setSelectedPort(443);
+    setConnectionMode('sni');
+    setCustomSetup(true);
+    toast.success('Configurações limpas com sucesso!');
+    setShowMenu(false);
+    setShowMoreMenu(false);
+  };
+
+  const tabs = [
+    { id: 'home', label: 'Início' },
+    { id: 'notes', label: 'Registro' },
+    { id: 'tools', label: 'Ferramentas' },
+    { id: 'help', label: 'Ajuda' }
+  ];
+
+  return (
+    <div className="bg-[#006064] sticky top-0 z-50 shadow-md">
+      <div className="flex items-center px-4 h-14">
+        <button 
+          onClick={onOpenDrawer}
+          className="p-2 hover:bg-white/5 rounded-full"
+        >
+          <Menu className="w-6 h-6 text-white" />
+        </button>
+        <div className="flex-1 flex justify-center">
+          <h1 className="text-lg font-bold text-white tracking-tight">
+            VPN FAST NET PRO
+          </h1>
+        </div>
+        <div className="flex items-center gap-1">
+          <button 
+            onClick={onOpenHelp}
+            className="p-2 hover:bg-white/5 rounded-full"
+          >
+            <HelpCircle className="w-6 h-6 text-white" />
+          </button>
+          
+          <div className="relative">
+            <button 
+              onClick={() => setShowMenu(!showMenu)}
+              className="p-2 hover:bg-white/5 rounded-full"
+            >
+              <FileText className="w-6 h-6 text-white" />
+            </button>
+            {showMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
+                <div className="absolute right-0 mt-2 w-56 bg-[#212121] rounded-lg shadow-xl z-50 py-1 border border-white/5 animate-in fade-in zoom-in duration-150 origin-top-right">
+                  <button
+                    onClick={() => {
+                      setActiveTab('importconfig');
+                      setShowMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-3 text-sm text-white hover:bg-white/5 flex items-center gap-3"
+                  >
+                    <FileDown className="w-4 h-4 text-primary" />
+                    Importar configuração
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveTab('exportconfig');
+                      setShowMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-3 text-sm text-white hover:bg-white/5 flex items-center gap-3"
+                  >
+                    <FileUp className="w-4 h-4 text-primary" />
+                    Exportar configuração
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+          <button 
+            className="p-2 hover:bg-white/5 rounded-full"
+            onClick={() => toast.info('Nenhuma notificação nova')}
+          >
+            <Bell className="w-6 h-6 text-white" />
+          </button>
+
+          <div className="relative">
+            <button 
+              onClick={() => setShowMoreMenu(!showMoreMenu)}
+              className="p-2 hover:bg-white/5 rounded-full"
+            >
+              <MoreVertical className="w-6 h-6 text-white" />
+            </button>
+            {showMoreMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowMoreMenu(false)} />
+                <div className="absolute right-0 mt-2 w-56 bg-[#212121] rounded-lg shadow-xl z-50 py-1 border border-white/5 animate-in fade-in zoom-in duration-150 origin-top-right">
+                  <button
+                    onClick={handleClearSettings}
+                    className="w-full text-left px-4 py-3 text-sm text-white hover:bg-white/5 flex items-center gap-3"
+                  >
+                    <RefreshCw className="w-4 h-4 text-primary" />
+                    Limpar configurações/Dados
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="flex px-4">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as Tab)}
+            className={`flex-1 py-3 text-sm font-bold transition-all relative ${
+              activeTab === tab.id ? 'text-white' : 'text-white/60'
+            }`}
+          >
+            {tab.label}
+            {activeTab === tab.id && (
+              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-white rounded-t-full" />
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const Dashboard = ({ activeTab, setActiveTab }: { activeTab: Tab, setActiveTab: (t: Tab) => void }) => {
+  const { 
+    isConnected, setIsConnected, 
+    timer, ipInfo, 
+    selectedServer, setSelectedServer,
+    selectedPort, setSelectedPort,
+    isPortModalOpen, setIsPortModalOpen,
+    isServerModalOpen, setIsServerModalOpen,
+    isHelpModalOpen, setIsHelpModalOpen,
+    customSetup, setCustomSetup,
+    connectionMode, setConnectionMode,
+    speed, runSpeedTest, isTesting,
+    dnsSettings, setDnsSettings,
+    isDnsModalOpen, setIsDnsModalOpen,
+    injectorSettings, setInjectorSettings,
+    connectionConfig, setConnectionConfig
+  } = useApp();
+
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   const servers: Server[] = [
     { id: 'ao-movicel-fr-2026', name: 'A-🇦🇴 Angola | Movicel FR.(2026)', location: '2026 update', flag: '🇦🇴', ping: 45, load: 12 },
@@ -459,186 +923,132 @@ const Dashboard = ({ setActiveTab }: { setActiveTab: (t: Tab) => void }) => {
 
   const ports = [22, 80, 222, 443, 1080, 3128, 8080, 8081, 8789, 8799, 8888];
 
-  const connectionModes = [
-    { id: 'direct', title: 'Conexão Direta', subtitle: 'Internet' },
-    { id: 'payload', title: 'Payload Personalizado', subtitle: 'Modo TCP' },
-    { id: 'host', title: 'Host Header Personalizado', subtitle: 'Modo HTTP' },
-    { id: 'sni', title: 'SNI Personalizado', subtitle: 'Modo SSL, TLS' },
-    { id: 'udp', title: 'UDP Personalizado', subtitle: 'Modo UDP' },
-    { id: 'tcp', title: 'TCP Personalizado', subtitle: 'Modo TCP' },
-    { id: 'dnstt', title: 'Túnel DNSTT', subtitle: 'Modo DNS' },
-    { id: 'v2ray', title: 'V2Ray / Xray', subtitle: 'Modo VMess, VLESS' },
-    { id: 'import', title: 'Configuração Importada', subtitle: 'Arquivo .HAT' },
-  ];
-
   const currentServer = servers.find(s => s.id === selectedServer) || servers[0];
 
+  const getDnsLabel = () => {
+    switch (dnsSettings.type) {
+      case 'default': return 'DNS Padrão';
+      case 'google': return 'Google DNS';
+      case 'cloudflare': return 'Cloudflare DNS';
+      case 'alibaba': return 'Alibaba DNS';
+      case 'custom': return 'DNS Customizado';
+      default: return 'DNS';
+    }
+  };
+
   return (
-    <div className="space-y-6 pb-12">
-      {/* Connection Status Card */}
-      <div className="android-card flex flex-col items-center justify-center relative overflow-hidden min-h-[400px]">
-        <div className="absolute inset-0 opacity-[0.03] pointer-events-none">
-          <Globe className="w-full h-full scale-150" />
-        </div>
-
-        <div className="relative z-10 flex flex-col items-center gap-8 w-full">
-          {/* Shield Icon */}
-          <div className="relative">
-            <div className={`w-48 h-48 rounded-full flex items-center justify-center transition-all duration-700 ${isConnected ? 'bg-primary/10 shadow-[0_0_80px_rgba(208,188,255,0.15)]' : 'bg-white/5'}`}>
-              <div className="w-36 h-36 relative flex items-center justify-center">
-                <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full">
-                  <defs>
-                    <linearGradient id="shieldGold" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#D0BCFF" />
-                      <stop offset="100%" stopColor="#381E72" />
-                    </linearGradient>
-                  </defs>
-                  <path 
-                    d="M50 5 L90 20 V50 C90 75 50 95 50 95 C50 95 10 75 10 50 V20 L50 5Z" 
-                    fill="#1C1B1F" 
-                    stroke="url(#shieldGold)" 
-                    strokeWidth="3"
-                  />
-                </svg>
-                <div className="relative z-10 flex flex-col items-center justify-center translate-y-[-4px]">
-                  <span className="text-[42px] font-black italic leading-none text-primary">VPN</span>
-                  <span className="text-[10px] font-black text-white/60 tracking-[0.2em] mt-1">FAST NET PRO</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="text-center space-y-2">
-            <h2 className={`text-xl font-bold tracking-wide transition-colors ${isConnected ? 'text-primary' : 'text-outline'}`}>
-              {isConnected ? 'PROTEGIDO' : 'DESPROTEGIDO'}
-            </h2>
-            <p className="text-5xl font-mono font-bold text-white tracking-tighter tabular-nums">{timer}</p>
-          </div>
-
-          <div className="flex items-center gap-12 w-full justify-center">
-            <div className="flex flex-col items-center gap-1">
-              <div className="p-2 bg-primary/10 rounded-xl">
-                <Download className="w-5 h-5 text-primary" />
-              </div>
-              <p className="text-[10px] text-outline uppercase font-bold">Down</p>
-              <p className="text-sm font-mono font-bold text-white">0 KB</p>
-            </div>
-            <div className="flex flex-col items-center gap-1">
-              <div className="p-2 bg-secondary/10 rounded-xl">
-                <Upload className="w-5 h-5 text-secondary" />
-              </div>
-              <p className="text-[10px] text-outline uppercase font-bold">Up</p>
-              <p className="text-sm font-mono font-bold text-white">0 KB</p>
-            </div>
+    <div className="space-y-4 pb-12">
+      <div className="px-4 space-y-4">
+        {/* Logo Section */}
+        <div className="flex justify-center pt-4">
+          <div className="w-full max-w-[280px] aspect-square rounded-3xl overflow-hidden shadow-2xl border border-white/10 bg-[#1a1a1a] flex items-center justify-center">
+            <video 
+              src="/logo_video.mp4" 
+              autoPlay 
+              loop 
+              muted 
+              playsInline
+              className="w-full h-full object-cover"
+            />
           </div>
         </div>
-      </div>
 
-      {/* Main Action Button (FAB Style but centered) */}
-      <div className="flex justify-center -mt-12 relative z-20">
+        {/* Iniciar Button */}
+        <div className="pt-4">
         <button 
           onClick={() => setIsConnected(!isConnected)}
-          className={`w-24 h-24 rounded-[28px] shadow-2xl flex items-center justify-center transition-all duration-300 active:scale-90 ${
+          className={`w-full py-4 rounded-full text-lg font-bold transition-all shadow-lg active:scale-95 ${
             isConnected 
-              ? 'bg-red-500 text-white shadow-red-900/40' 
-              : 'bg-primary text-on-primary shadow-primary/40'
+              ? 'bg-red-500 text-white' 
+              : 'bg-[#00838f] text-white'
           }`}
         >
-          <Zap className={`w-10 h-10 ${isConnected ? 'animate-pulse' : ''}`} />
+          {isConnected ? 'Parar' : 'Iniciar'}
         </button>
       </div>
 
-      {/* Quick Info Grid */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="android-card p-4 flex flex-col gap-2">
-          <div className="flex items-center gap-2 text-outline">
-            <Globe className="w-4 h-4" />
-            <span className="text-[10px] font-bold uppercase tracking-wider">IP Público</span>
+      {/* Connection Mode Card */}
+      <button 
+        onClick={() => setActiveTab('injector')}
+        className="android-card p-4 flex items-center justify-between bg-[#212121] hover:bg-[#2c2c2c] transition-colors"
+      >
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 flex items-center justify-center text-zinc-400">
+            <div className="border-2 border-zinc-400 p-1 rounded-md">
+              <span className="text-[10px] font-bold leading-none">10<br/>01</span>
+            </div>
           </div>
-          <p className="text-sm font-mono font-bold text-white truncate">{ipInfo?.ip || 'Detectando...'}</p>
+          <span className="text-lg font-medium text-zinc-200 uppercase">
+            {injectorSettings.connectVia === 'tls_ssl_stunnel' ? 'SSL/TLS' : injectorSettings.connectVia.replace('_', '/').toUpperCase()} → {injectorSettings.tunnelMode.toUpperCase()}
+          </span>
         </div>
-        <div className="android-card p-4 flex flex-col gap-2">
-          <div className="flex items-center gap-2 text-outline">
-            <Cpu className="w-4 h-4" />
-            <span className="text-[10px] font-bold uppercase tracking-wider">Latência</span>
-          </div>
-          <p className="text-sm font-mono font-bold text-white">24ms</p>
-        </div>
-      </div>
+        <ChevronRight className="w-6 h-6 text-zinc-500" />
+      </button>
 
-      {/* Configuration Section */}
-      <div className="android-card space-y-4">
-        <h3 className="text-xs font-bold text-primary uppercase tracking-widest mb-2">Configuração</h3>
-        
-        <button 
-          onClick={() => setIsServerModalOpen(true)}
-          className="android-list-item bg-white/5"
-        >
-          <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-2xl">
-            {currentServer.flag}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-white truncate">{currentServer.name}</p>
-            <p className="text-[10px] text-outline font-medium uppercase">{currentServer.location}</p>
-          </div>
-          <ChevronRight className="w-5 h-5 text-outline" />
-        </button>
-
-        <button 
-          onClick={() => setIsPortModalOpen(true)}
-          className="android-list-item bg-white/5"
-        >
-          <div className="w-12 h-12 bg-secondary/10 rounded-2xl flex items-center justify-center">
-            <Network className="w-6 h-6 text-secondary" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-white truncate">Porta: {selectedPort}</p>
-            <p className="text-[10px] text-outline font-medium uppercase">Protocolo TCP/UDP</p>
-          </div>
-          <ChevronRight className="w-5 h-5 text-outline" />
-        </button>
-      </div>
-
-      {/* Connection Modes */}
-      <div className="android-card space-y-4">
+      {/* SNI Card */}
+      <div className="android-card p-4 space-y-1 bg-[#212121]">
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold text-primary uppercase tracking-widest">Modo de Conexão</h3>
+          <div className="space-y-1">
+            <p className="text-sm font-bold text-zinc-200">Indicação do Nome do Servidor (SNI)</p>
+            <p className="text-lg text-zinc-400">{connectionConfig.sni || 'facebook.com'}</p>
+          </div>
           <button 
-            onClick={() => setCustomSetup(!customSetup)}
-            className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${
-              customSetup ? 'bg-primary text-on-primary' : 'bg-white/5 text-outline'
-            }`}
+            onClick={() => setActiveTab('custom')}
+            className="p-2 hover:bg-white/5 rounded-full text-zinc-400"
           >
-            {customSetup ? 'Custom ON' : 'Custom OFF'}
+            <Edit2 className="w-6 h-6" />
           </button>
         </div>
-
-        <div className="grid grid-cols-1 gap-2">
-          <input type="file" ref={fileInputRef} onChange={handleImportConfig} className="hidden" accept=".hat,.config,.vpn" />
-          {connectionModes.slice(0, 6).map((mode) => (
-            <button
-              key={mode.id}
-              onClick={() => {
-                if (mode.id === 'import') fileInputRef.current?.click();
-                else setConnectionMode(mode.id as ConnectionMode);
-              }}
-              className={`android-list-item border ${
-                connectionMode === mode.id ? 'border-primary bg-primary/5' : 'border-transparent bg-white/5'
-              }`}
-            >
-              <div className="w-10 h-10 bg-surface rounded-xl flex items-center justify-center">
-                <Zap className={`w-5 h-5 ${connectionMode === mode.id ? 'text-primary' : 'text-outline'}`} />
-              </div>
-              <div className="flex-1">
-                <p className={`text-sm font-bold ${connectionMode === mode.id ? 'text-primary' : 'text-white'}`}>{mode.title}</p>
-                <p className="text-[10px] text-outline font-medium uppercase">{mode.subtitle}</p>
-              </div>
-              {connectionMode === mode.id && <CheckCircle className="w-5 h-5 text-primary" />}
-            </button>
-          ))}
-        </div>
       </div>
+
+      {/* Telegram Card */}
+      <a 
+        href="https://t.me/vpnfastnetpro" 
+        target="_blank" 
+        rel="noopener noreferrer"
+        className="android-card p-4 flex items-center gap-4 bg-[#212121] hover:bg-[#2c2c2c] transition-colors"
+      >
+        <div className="w-10 h-10 bg-zinc-800 rounded-lg flex items-center justify-center text-zinc-400">
+          <LayoutGrid className="w-6 h-6" />
+        </div>
+        <span className="text-lg text-zinc-300">Join Telegram channel / group</span>
+      </a>
+
+      {/* DNS Checkbox */}
+      <div className="flex items-center gap-3 px-1">
+        <button
+          onClick={() => setDnsSettings({ ...dnsSettings, enabled: !dnsSettings.enabled })}
+          className={`w-6 h-6 rounded flex items-center justify-center transition-colors ${
+            dnsSettings.enabled ? 'bg-[#00bcd4]' : 'bg-zinc-700'
+          }`}
+        >
+          {dnsSettings.enabled && <CheckCircle className="w-4 h-4 text-white" />}
+        </button>
+        <button 
+          onClick={() => setIsDnsModalOpen(true)}
+          className="text-lg text-zinc-300"
+        >
+          DNS ({getDnsLabel()})
+        </button>
+      </div>
+
+      </div>
+
       {/* Modals */}
+      <AndroidDrawer 
+        isOpen={isDrawerOpen} 
+        onClose={() => setIsDrawerOpen(false)} 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+      />
+      
+      <DNSConfigurationModal 
+        isOpen={isDnsModalOpen}
+        onClose={() => setIsDnsModalOpen(false)}
+        settings={dnsSettings}
+        setSettings={setDnsSettings}
+      />
+
       {isServerModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="android-card w-full max-w-md flex flex-col overflow-hidden animate-in zoom-in duration-200">
@@ -1517,39 +1927,465 @@ const SettingsView = () => {
   );
 };
 
+const ToolHeader = ({ title, onBack }: { title: string, onBack: () => void }) => (
+  <div className="flex items-center gap-4 px-4 py-4 sticky top-0 bg-black z-20">
+    <button onClick={onBack} className="p-2 -ml-2 hover:bg-white/10 rounded-full transition-colors">
+      <ArrowLeft className="w-6 h-6 text-white" />
+    </button>
+    <h2 className="text-xl font-bold text-white">{title}</h2>
+  </div>
+);
+
+const TetheringToolView = ({ onBack }: { onBack: () => void }) => {
+  return (
+    <div className="min-h-screen bg-black pb-12">
+      <ToolHeader title="Ferramentas de Tethering" onBack={onBack} />
+      <div className="px-4 space-y-6">
+        <div className="android-card p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-white font-bold">Hotspot (Wi-Fi)</h3>
+              <p className="text-[11px] text-outline">Compartilhar VPN via Wi-Fi</p>
+            </div>
+            <button className="px-4 py-1.5 bg-primary/20 text-primary text-xs font-bold rounded-lg">ATIVAR</button>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-white font-bold">USB Tethering</h3>
+              <p className="text-[11px] text-outline">Compartilhar VPN via cabo USB</p>
+            </div>
+            <button className="px-4 py-1.5 bg-surface-variant text-outline text-xs font-bold rounded-lg">DESATIVADO</button>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-white font-bold">Bluetooth Tethering</h3>
+              <p className="text-[11px] text-outline">Compartilhar VPN via Bluetooth</p>
+            </div>
+            <button className="px-4 py-1.5 bg-surface-variant text-outline text-xs font-bold rounded-lg">DESATIVADO</button>
+          </div>
+        </div>
+
+        <div className="android-card p-4">
+          <h3 className="text-white font-bold mb-2">Desbloquear Limite de Hotspot</h3>
+          <p className="text-xs text-outline mb-4">
+            Algumas operadoras limitam o uso do hotspot. Esta ferramenta tenta contornar essa limitação.
+          </p>
+          <button className="w-full py-3 bg-primary text-black font-bold rounded-xl active:scale-95 transition-transform">
+            EXECUTAR DESBLOQUEIO
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const IPSearchToolView = ({ onBack }: { onBack: () => void }) => {
+  const [ipInfo, setIpInfo] = useState<{ local: string, public: string, hostname: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const fetchIP = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('https://api.ipify.org?format=json');
+      const data = await response.json();
+      setIpInfo({
+        local: '192.168.1.105',
+        public: data.ip,
+        hostname: 'android-device.local'
+      });
+    } catch (error) {
+      toast.error('Erro ao buscar IP público');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-black pb-12">
+      <ToolHeader title="Procurar IP" onBack={onBack} />
+      <div className="px-4 space-y-6">
+        <div className="android-card p-4 space-y-4">
+          <div className="space-y-1">
+            <span className="text-[10px] uppercase font-bold text-primary tracking-wider">Endereço IP Local</span>
+            <p className="text-white font-mono">{ipInfo?.local || '---.---.---.---'}</p>
+          </div>
+          <div className="space-y-1">
+            <span className="text-[10px] uppercase font-bold text-primary tracking-wider">Endereço IP Público</span>
+            <p className="text-white font-mono">{ipInfo?.public || '---.---.---.---'}</p>
+          </div>
+          <div className="space-y-1">
+            <span className="text-[10px] uppercase font-bold text-primary tracking-wider">Nome do Host</span>
+            <p className="text-white font-mono">{ipInfo?.hostname || '---'}</p>
+          </div>
+        </div>
+
+        <button 
+          onClick={fetchIP}
+          disabled={loading}
+          className="w-full py-4 bg-primary text-black font-bold rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-transform disabled:opacity-50"
+        >
+          {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+          PESQUISAR IP
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const TestToolView = ({ onBack }: { onBack: () => void }) => {
+  const [results, setResults] = useState<{ type: string, status: 'pending' | 'success' | 'error', value?: string }[]>([]);
+  const [testing, setTesting] = useState(false);
+
+  const runTests = async () => {
+    setTesting(true);
+    setResults([
+      { type: 'STUN Test', status: 'pending' },
+      { type: 'DNS Tunnel', status: 'pending' },
+      { type: 'Ping Google', status: 'pending' }
+    ]);
+
+    await new Promise(r => setTimeout(r, 1000));
+    setResults(prev => prev.map((r, i) => i === 0 ? { ...r, status: 'success', value: 'Open (UDP)' } : r));
+    await new Promise(r => setTimeout(r, 1000));
+    setResults(prev => prev.map((r, i) => i === 1 ? { ...r, status: 'success', value: 'Functional' } : r));
+    await new Promise(r => setTimeout(r, 1000));
+    setResults(prev => prev.map((r, i) => i === 2 ? { ...r, status: 'success', value: '45ms' } : r));
+    
+    setTesting(false);
+  };
+
+  return (
+    <div className="min-h-screen bg-black pb-12">
+      <ToolHeader title="Teste" onBack={onBack} />
+      <div className="px-4 space-y-6">
+        <div className="android-card p-2">
+          {results.length === 0 ? (
+            <div className="p-8 text-center">
+              <Activity className="w-12 h-12 text-outline mx-auto mb-4 opacity-20" />
+              <p className="text-outline text-sm">Nenhum teste executado ainda</p>
+            </div>
+          ) : (
+            results.map((res, idx) => (
+              <div key={idx} className="android-list-item">
+                <div className="flex-1">
+                  <h4 className="text-white font-bold">{res.type}</h4>
+                  <p className="text-[11px] text-outline">{res.value || (res.status === 'pending' ? 'Testando...' : 'Aguardando')}</p>
+                </div>
+                {res.status === 'success' && <CheckCircle className="w-5 h-5 text-primary" />}
+                {res.status === 'pending' && <RefreshCw className="w-5 h-5 text-outline animate-spin" />}
+                {res.status === 'error' && <AlertCircle className="w-5 h-5 text-destructive" />}
+              </div>
+            ))
+          )}
+        </div>
+
+        <button 
+          onClick={runTests}
+          disabled={testing}
+          className="w-full py-4 bg-primary text-black font-bold rounded-2xl active:scale-95 transition-transform disabled:opacity-50"
+        >
+          {testing ? 'EXECUTANDO TESTES...' : 'INICIAR TESTES'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const DiagnosticToolView = ({ onBack }: { onBack: () => void }) => {
+  const [info] = useState({
+    device: { model: 'SM-G998B', brand: 'Samsung', android: '13' },
+    network: { type: '4G/LTE', signal: '-98 dBm', operator: 'Vodafone' },
+    battery: { level: '85%', status: 'Descarregando', health: 'Boa' }
+  });
+
+  return (
+    <div className="min-h-screen bg-black pb-12">
+      <ToolHeader title="Diagnóstico" onBack={onBack} />
+      <div className="px-4 space-y-6">
+        <div className="android-card p-4 space-y-6">
+          <section className="space-y-3">
+            <div className="flex items-center gap-2 text-primary">
+              <Smartphone className="w-4 h-4" />
+              <span className="text-[10px] uppercase font-bold tracking-wider">Dispositivo</span>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-[10px] text-outline uppercase">Modelo</p>
+                <p className="text-white font-bold">{info.device.model}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-outline uppercase">Android</p>
+                <p className="text-white font-bold">{info.device.android}</p>
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <div className="flex items-center gap-2 text-primary">
+              <Signal className="w-4 h-4" />
+              <span className="text-[10px] uppercase font-bold tracking-wider">Rede</span>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-[10px] text-outline uppercase">Tipo</p>
+                <p className="text-white font-bold">{info.network.type}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-outline uppercase">Sinal</p>
+                <p className="text-white font-bold">{info.network.signal}</p>
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <div className="flex items-center gap-2 text-primary">
+              <Battery className="w-4 h-4" />
+              <span className="text-[10px] uppercase font-bold tracking-wider">Bateria</span>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-[10px] text-outline uppercase">Nível</p>
+                <p className="text-white font-bold">{info.battery.level}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-outline uppercase">Saúde</p>
+                <p className="text-white font-bold">{info.battery.health}</p>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <button className="w-full py-4 bg-surface-variant text-white font-bold rounded-2xl active:scale-95 transition-transform flex items-center justify-center gap-2">
+          <RefreshCw className="w-5 h-5" />
+          ATUALIZAR DIAGNÓSTICO
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const DNSChangerToolView = ({ onBack }: { onBack: () => void }) => {
+  const [selectedDNS, setSelectedDNS] = useState('google');
+  const [customDNS, setCustomDNS] = useState('');
+
+  const dnsProviders = [
+    { id: 'google', name: 'Google DNS', primary: '8.8.8.8', secondary: '8.8.4.4' },
+    { id: 'cloudflare', name: 'Cloudflare', primary: '1.1.1.1', secondary: '1.0.0.1' },
+    { id: 'adguard', name: 'AdGuard DNS', primary: '94.140.14.14', secondary: '94.140.15.15' },
+    { id: 'quad9', name: 'Quad9', primary: '9.9.9.9', secondary: '149.112.112.112' },
+  ];
+
+  const handleApply = () => {
+    toast.success('DNS alterado com sucesso!');
+  };
+
+  return (
+    <div className="min-h-screen bg-black pb-12">
+      <ToolHeader title="Alterador DNS" onBack={onBack} />
+      <div className="px-4 space-y-6">
+        <div className="android-card p-2">
+          {dnsProviders.map((dns) => (
+            <button 
+              key={dns.id}
+              onClick={() => setSelectedDNS(dns.id)}
+              className="android-list-item"
+            >
+              <div className="flex-1 text-left">
+                <h4 className="text-white font-bold">{dns.name}</h4>
+                <p className="text-[11px] text-outline">{dns.primary} | {dns.secondary}</p>
+              </div>
+              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedDNS === dns.id ? 'border-primary' : 'border-outline'}`}>
+                {selectedDNS === dns.id && <div className="w-3 h-3 bg-primary rounded-full" />}
+              </div>
+            </button>
+          ))}
+          
+          <div className="p-4 space-y-2">
+            <h4 className="text-white font-bold text-sm">DNS Personalizado</h4>
+            <input 
+              type="text"
+              placeholder="Ex: 8.8.8.8"
+              value={customDNS}
+              onChange={(e) => {
+                setCustomDNS(e.target.value);
+                setSelectedDNS('custom');
+              }}
+              className="android-input text-sm"
+            />
+          </div>
+        </div>
+
+        <button 
+          onClick={handleApply}
+          className="w-full py-4 bg-primary text-black font-bold rounded-2xl active:scale-95 transition-transform"
+        >
+          APLICAR CONFIGURAÇÃO
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const ResponseCheckerToolView = ({ onBack }: { onBack: () => void }) => {
+  const [url, setUrl] = useState('');
+  const [method, setMethod] = useState('GET');
+  const [useProxy, setUseProxy] = useState(false);
+  const [header, setHeader] = useState('Host');
+  const [result, setResult] = useState<{ status: number, text: string } | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  const checkResponse = async () => {
+    if (!url) {
+      toast.error('Por favor, insira um Host / URL');
+      return;
+    }
+    setChecking(true);
+    setResult(null);
+    try {
+      await new Promise(r => setTimeout(r, 1500));
+      setResult({ status: 200, text: 'OK' });
+    } catch (error) {
+      setResult({ status: 0, text: 'Erro de Conexão' });
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-black pb-12">
+      <ToolHeader title="Verificar Servidor" onBack={onBack} />
+      <div className="px-4 space-y-6">
+        <div className="android-card p-4 space-y-5">
+          <div className="space-y-2">
+            <label className="text-[10px] uppercase font-bold text-primary tracking-wider px-1">Host / URL</label>
+            <input 
+              type="text"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              className="android-input"
+              placeholder="Ex: www.facebook.co..."
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] uppercase font-bold text-primary tracking-wider px-1">Método</label>
+            <div className="relative">
+              <select 
+                value={method}
+                onChange={(e) => setMethod(e.target.value)}
+                className="android-input appearance-none pr-10"
+              >
+                {['GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'CONNECT', 'OPTIONS', 'TRACE', 'PATCH'].map(m => (
+                  <option key={m} value={m} className="bg-[#1a1a1a]">{m}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-outline pointer-events-none" />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between px-1">
+            <span className="text-sm text-white font-medium">Proxy</span>
+            <button 
+              onClick={() => setUseProxy(!useProxy)}
+              className={`w-12 h-6 rounded-full relative transition-colors duration-200 ${useProxy ? 'bg-primary' : 'bg-surface-variant'}`}
+            >
+              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-200 ${useProxy ? 'left-7' : 'left-1'}`} />
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] uppercase font-bold text-primary tracking-wider px-1">Header</label>
+            <div className="relative">
+              <select 
+                value={header}
+                onChange={(e) => setHeader(e.target.value)}
+                className="android-input appearance-none pr-10"
+              >
+                {['Host', 'User-Agent', 'Referer', 'Cookie', 'Authorization', 'Content-Type'].map(h => (
+                  <option key={h} value={h} className="bg-[#1a1a1a]">{h}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-outline pointer-events-none" />
+            </div>
+          </div>
+        </div>
+
+        <button 
+          onClick={checkResponse}
+          disabled={checking}
+          className="w-full py-4 bg-primary text-black font-bold rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-transform disabled:opacity-50"
+        >
+          {checking ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+          CHECAR
+        </button>
+
+        {result && (
+          <div className={`android-card p-6 text-center animate-in fade-in slide-in-from-bottom-4 ${result.status === 200 ? 'border-primary/50' : 'border-destructive/50'}`}>
+            <span className="text-[10px] uppercase font-bold text-outline block mb-1">Status da Resposta</span>
+            <h3 className={`text-4xl font-black ${result.status === 200 ? 'text-primary' : 'text-destructive'}`}>
+              {result.status}
+            </h3>
+            <p className="text-white font-bold mt-2">{result.text}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const ToolsView = () => {
+  const [activeTool, setActiveTool] = useState<string | null>(null);
   const [debugMode, setDebugMode] = useState(false);
+
+  if (activeTool === 'tethering') return <TetheringToolView onBack={() => setActiveTool(null)} />;
+  if (activeTool === 'ip_search') return <IPSearchToolView onBack={() => setActiveTool(null)} />;
+  if (activeTool === 'test') return <TestToolView onBack={() => setActiveTool(null)} />;
+  if (activeTool === 'diagnostic') return <DiagnosticToolView onBack={() => setActiveTool(null)} />;
+  if (activeTool === 'dns_changer') return <DNSChangerToolView onBack={() => setActiveTool(null)} />;
+  if (activeTool === 'response_checker') return <ResponseCheckerToolView onBack={() => setActiveTool(null)} />;
 
   const tools = [
     { 
+      id: 'response_checker',
+      title: 'Verificador de Resposta', 
+      description: 'Verificar o código de resposta HTTP de um host', 
+      icon: CheckCircle,
+    },
+    { 
+      id: 'dns_changer',
+      title: 'Alterador DNS', 
+      description: 'Mudar o DNS do sistema para melhor desempenho', 
+      icon: Globe,
+    },
+    { 
+      id: 'tethering',
       title: 'Ferramentas de Tethering', 
       description: 'Tether uma conexão VPN ou desbloqueie o limite do hotspot', 
       icon: Wifi,
-      action: () => alert('Ferramentas de Tethering')
     },
     { 
+      id: 'ip_search',
       title: 'Procurar IP', 
       description: 'Pesquisar endereço IP local', 
       icon: Network,
-      action: () => alert('Procurar IP')
     },
     { 
+      id: 'test',
       title: 'Teste', 
       description: 'STUN, DNS Tunnel', 
       icon: Activity,
-      action: () => alert('Teste')
     },
     { 
+      id: 'diagnostic',
       title: 'Diagnóstico', 
       description: 'Diagnosticar e solucionar problemas de dispositivo', 
       icon: Info,
-      action: () => alert('Diagnóstico')
     },
     { 
+      id: 'speed',
       title: 'Velocidade da rede', 
       description: 'Monitore seu uso de rede em tempo real', 
       icon: Zap,
-      action: () => alert('Velocidade da rede')
     },
   ];
 
@@ -1564,7 +2400,7 @@ const ToolsView = () => {
         {tools.map((tool, idx) => (
           <button
             key={idx}
-            onClick={tool.action}
+            onClick={() => tool.id !== 'speed' ? setActiveTool(tool.id) : alert('Velocidade da rede')}
             className="android-list-item"
           >
             <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center">
@@ -1599,63 +2435,70 @@ const ToolsView = () => {
 };
 
 const SplashScreen = ({ onComplete }: { onComplete: () => void, key?: string }) => {
-  const [animationData, setAnimationData] = useState<any>(null);
-  const [error, setError] = useState(false);
-
   useEffect(() => {
-    // Try to load the JSON animation
-    fetch('/animacao.json')
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to load animation');
-        return res.json();
-      })
-      .then(data => setAnimationData(data))
-      .catch(() => {
-        setError(true);
-        // If JSON fails, skip after 3 seconds
-        const timer = setTimeout(onComplete, 3000);
-        return () => clearTimeout(timer);
-      });
+    // Automatically complete after 4.5 seconds
+    const timer = setTimeout(onComplete, 4500);
+    return () => clearTimeout(timer);
   }, [onComplete]);
 
   return (
     <motion.div 
       initial={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.8, ease: "easeInOut" }}
+      transition={{ duration: 1, ease: "easeInOut" }}
       className="fixed inset-0 z-[9999] bg-black flex items-center justify-center overflow-hidden"
     >
-      {animationData ? (
-        <div className="w-full h-full flex items-center justify-center">
-          <Lottie 
-            animationData={animationData} 
-            loop={false} 
-            onComplete={onComplete}
-            className="w-full h-full object-contain"
-          />
-        </div>
-      ) : (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-surface gap-4">
-          <Shield className="w-20 h-20 text-primary animate-pulse" />
-          <h2 className="text-xl font-bold text-white">VPN FAST NET PRO</h2>
-          <p className="text-xs text-outline">Carregando animação...</p>
-        </div>
-      )}
-
-      {/* Skip button as a fallback */}
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 3 }}
-        className="absolute bottom-10"
+      {/* Main Image Animation - Full Screen */}
+      <motion.div
+        initial={{ opacity: 0, scale: 1.1 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ 
+          duration: 2, 
+          ease: "easeOut"
+        }}
+        className="absolute inset-0 w-full h-full"
       >
-        <button 
-          onClick={onComplete}
-          className="px-6 py-2 bg-white/10 backdrop-blur-md border border-white/20 rounded-full text-white/60 text-xs font-bold uppercase tracking-widest hover:bg-white/20 transition-colors"
-        >
-          Pular
-        </button>
+        <img 
+          src="/splash.png" 
+          alt="Fast VPN Net"
+          className="w-full h-full object-cover"
+          referrerPolicy="no-referrer"
+          onError={(e) => {
+            // Fallback if image is missing
+            e.currentTarget.style.display = 'none';
+          }}
+        />
+        
+        {/* Subtle Overlay to ensure text readability if needed */}
+        <div className="absolute inset-0 bg-black/20" />
       </motion.div>
+
+      {/* Content Overlay */}
+      <div className="relative z-10 flex flex-col items-center justify-end w-full h-full pb-24">
+        {/* Loading Text - Matching the video "A CARREGAR ..." */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1, duration: 0.8 }}
+          className="flex flex-col items-center gap-2"
+        >
+          <div className="flex items-center gap-1">
+            <span className="text-white text-sm font-bold tracking-[0.2em] uppercase">
+              A CARREGAR
+            </span>
+            <div className="flex gap-1 mt-1">
+              {[0, 1, 2].map((i) => (
+                <motion.div
+                  key={i}
+                  animate={{ opacity: [0.2, 1, 0.2] }}
+                  transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.3 }}
+                  className="w-1 h-1 bg-white rounded-full"
+                />
+              ))}
+            </div>
+          </div>
+        </motion.div>
+      </div>
     </motion.div>
   );
 };
@@ -1843,24 +2686,75 @@ const ImportConfigView = ({ onBack }: { onBack: () => void }) => {
 
 const ExportConfigView = ({ onBack }: { onBack: () => void }) => {
   const [fileName, setFileName] = useState('');
-  const [options, setOptions] = useState({
-    ssh: false,
+  const [lockAll, setLockAll] = useState(false);
+  const [lockConfig, setLockConfig] = useState(false);
+  const [note, setNote] = useState('');
+  const [expandedSection, setExpandedSection] = useState<string | null>('geral');
+  const [protocols, setProtocols] = useState({
+    ssh: true,
     v2ray: false,
     hysteria: false,
     shadowsocks: false
   });
+  const [geralOptions, setGeralOptions] = useState({
+    payload: false,
+    remoteProxy: false,
+    remoteProxyAuth: false,
+    sni: false
+  });
+  const [sshOptions, setSshOptions] = useState({
+    hostPort: false,
+    userPass: false
+  });
+  const [v2rayOptions, setV2rayOptions] = useState({
+    editor: true,
+    hostPort: false,
+    password: false
+  });
+  const [hysteriaOptions, setHysteriaOptions] = useState({
+    server: false,
+    settings: false
+  });
+  const [shadowsocksOptions, setShadowsocksOptions] = useState({
+    hostPort: false,
+    password: false,
+    httpObfs: false,
+    sni: false
+  });
+  const [dnsttOptions, setDnsttOptions] = useState({
+    dnsResolver: false,
+    dnsttSettings: false
+  });
+  const [extraOptions, setExtraOptions] = useState({
+    mobileOnly: false,
+    lockOperator: false,
+    attestDevice: false,
+    blockRoot: false,
+    playStoreOnly: false,
+    blockHwid: false,
+    setExpiry: false,
+    loginHwid: false,
+    disableUserSub: false,
+    noTorrent: false,
+    gameMode: false
+  });
 
-  const handleExport = () => {
-    if (!fileName) {
-      toast.error('Por favor, insira o nome do arquivo.');
-      return;
-    }
-    toast.success(`Configuração "${fileName}" exportada com sucesso!`);
+  const [isSaveMenuOpen, setIsSaveMenuOpen] = useState(false);
+
+  const isAnyProtocolSelected = Object.values(protocols).some(enabled => enabled);
+  
+  // Refined visibility logic
+  const showGeral = protocols.ssh && !protocols.v2ray && !protocols.hysteria;
+  const showDnstt = protocols.ssh && !protocols.v2ray && !protocols.hysteria && !protocols.shadowsocks;
+
+  const handleExport = (type: string) => {
+    toast.success(`Configuração salva: ${type}`);
+    setIsSaveMenuOpen(false);
     onBack();
   };
 
   return (
-    <div className="min-h-screen bg-surface flex flex-col animate-in fade-in slide-in-from-right duration-300">
+    <div className="min-h-screen bg-[#F5F5F5] flex flex-col animate-in fade-in slide-in-from-right duration-300 text-zinc-800">
       {/* Header */}
       <header className="h-16 bg-[#006064] px-4 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center gap-4">
@@ -1869,46 +2763,401 @@ const ExportConfigView = ({ onBack }: { onBack: () => void }) => {
           </button>
           <h1 className="text-xl font-medium text-white">Exportar Configuração</h1>
         </div>
-        <button 
-          onClick={handleExport}
-          className="w-14 h-14 bg-[#03A9F4] rounded-full flex items-center justify-center shadow-lg translate-y-8 -translate-x-4 active:scale-95 transition-transform"
-        >
-          <FileUp className="w-7 h-7 text-white" />
-        </button>
+        
+        {/* Floating Action Menu */}
+        <div className="relative">
+          <button 
+            onClick={() => setIsSaveMenuOpen(!isSaveMenuOpen)}
+            className="w-14 h-14 bg-[#2196F3] rounded-full flex items-center justify-center shadow-lg translate-y-8 -translate-x-2 active:scale-95 transition-transform z-50"
+          >
+            <Download className={`w-7 h-7 text-white transition-transform ${isSaveMenuOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {isSaveMenuOpen && (
+            <div className="absolute top-24 right-0 flex flex-col items-end gap-4 z-50 pointer-events-none">
+              {[
+                { id: 'cloud', label: 'Salvar na nuvem', icon: Cloud },
+                { id: 'save', label: 'Salvar', icon: Save },
+                { id: 'locked', label: 'Salvar bloqueado e desbloqueado', icon: Copy },
+                { id: 'share', label: 'Salvar compartilhamento', icon: Share2 },
+              ].map((item) => (
+                <div key={item.id} className="flex items-center gap-3 pointer-events-auto">
+                  <span className="bg-[#333333] text-white text-sm px-3 py-1.5 rounded shadow-lg whitespace-nowrap">
+                    {item.label}
+                  </span>
+                  <button 
+                    onClick={() => handleExport(item.label)}
+                    className="w-12 h-12 bg-[#2196F3] rounded-full flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform"
+                  >
+                    <item.icon className="w-6 h-6 text-white" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </header>
 
-      <div className="p-4 pt-12 space-y-6">
-        {/* File Name Input */}
-        <div className="space-y-2">
-          <input 
-            type="text" 
-            placeholder="Nome do arquivo"
-            value={fileName}
-            onChange={(e) => setFileName(e.target.value)}
-            className="w-full bg-transparent border-b border-zinc-700 py-3 text-white placeholder:text-zinc-500 focus:border-primary outline-none transition-colors"
-          />
-        </div>
-
-        {/* Export Options */}
-        <div className="bg-[#212121] rounded-lg overflow-hidden border border-white/5">
-          <div className="p-4 border-b border-white/5">
-            <h3 className="text-sm font-medium text-zinc-400">Exportar Configuração</h3>
+      <div className="flex-1 overflow-y-auto pb-20">
+        <div className="p-4 pt-10 space-y-6">
+          {/* File Name Input */}
+          <div className="bg-white rounded shadow-sm p-4">
+            <div className="border border-zinc-300 rounded p-3">
+              <input 
+                type="text"
+                placeholder="Nome do arquivo"
+                value={fileName}
+                onChange={(e) => setFileName(e.target.value)}
+                className="w-full bg-transparent text-zinc-700 placeholder:text-zinc-400 outline-none text-base"
+              />
+            </div>
           </div>
-          <div className="p-4 grid grid-cols-2 gap-4">
-            {Object.entries(options).map(([key, value]) => (
-              <label key={key} className="flex items-center gap-3 cursor-pointer group">
-                <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${value ? 'bg-primary border-primary' : 'border-zinc-600 group-hover:border-zinc-400'}`}>
-                  <input 
-                    type="checkbox" 
-                    className="hidden" 
-                    checked={value}
-                    onChange={() => setOptions(prev => ({ ...prev, [key]: !prev[key] }))}
-                  />
-                  {value && <CheckCircle className="w-4 h-4 text-on-primary" />}
+
+          {/* Protocol Selection Section */}
+          <div className="bg-white rounded shadow-sm p-4 space-y-4">
+            <h2 className="text-sm font-bold text-zinc-700">Exportar Configuração</h2>
+            <div className="flex flex-wrap gap-4">
+              {Object.entries(protocols).map(([id, enabled]) => (
+                <button 
+                  key={id}
+                  onClick={() => setProtocols(prev => ({ ...prev, [id]: !enabled }))}
+                  className="flex items-center gap-2"
+                >
+                  <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+                    enabled ? 'bg-[#006064] border-[#006064]' : 'border-zinc-400'
+                  }`}>
+                    {enabled && <CheckCircle className="w-3.5 h-3.5 text-white" />}
+                  </div>
+                  <span className="text-sm text-zinc-700 uppercase">{id === 'ssh' ? 'SSH' : id === 'v2ray' ? 'V2Ray' : id === 'hysteria' ? 'Hysteria' : 'Shadowsocks'}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="h-px bg-zinc-300 mx-2" />
+
+          {/* Security Section */}
+          {isAnyProtocolSelected && (
+            <div className="space-y-4 px-2">
+              <h2 className="text-sm font-bold text-zinc-700">Segurança/Bloqueio</h2>
+              
+              <button 
+                onClick={() => setLockConfig(!lockConfig)}
+                className="flex items-center gap-3 w-full text-left"
+              >
+                <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+                  lockConfig ? 'bg-[#006064] border-[#006064]' : 'border-zinc-400'
+                }`}>
+                  {lockConfig && <CheckCircle className="w-3.5 h-3.5 text-white" />}
                 </div>
-                <span className="text-sm text-zinc-300 uppercase font-medium">{key === 'v2ray' ? 'V2Ray' : key}</span>
-              </label>
-            ))}
+                <span className="text-sm text-zinc-700">Bloquear configuração e impedir a edição</span>
+              </button>
+
+              <button 
+                onClick={() => setLockAll(!lockAll)}
+                className="flex items-center gap-3 w-full text-left"
+              >
+                <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+                  lockAll ? 'bg-[#006064] border-[#006064]' : 'border-zinc-400'
+                }`}>
+                  {lockAll && <CheckCircle className="w-3.5 h-3.5 text-white" />}
+                </div>
+                <span className="text-sm text-zinc-500">Bloquear todas as opções abaixo</span>
+              </button>
+            </div>
+          )}
+
+          {/* Geral Section */}
+          {showGeral && (
+            <div className="bg-white rounded shadow-sm overflow-hidden">
+              <button 
+                onClick={() => setExpandedSection(expandedSection === 'geral' ? null : 'geral')}
+                className="w-full p-4 flex items-center justify-between hover:bg-zinc-50 transition-colors"
+              >
+                <span className="text-sm text-zinc-700">Geral</span>
+                <ChevronDown className={`w-5 h-5 text-zinc-400 transition-transform ${expandedSection === 'geral' ? 'rotate-180' : ''}`} />
+              </button>
+              
+              {expandedSection === 'geral' && (
+                <div className="p-4 pt-0 space-y-4 bg-zinc-50/50">
+                  {[
+                    { id: 'payload', label: 'Payload' },
+                    { id: 'remoteProxy', label: 'Proxy remoto' },
+                    { id: 'remoteProxyAuth', label: 'Proxy Remoto, Usuário e Senha' },
+                    { id: 'sni', label: 'Indicação do Nome do Servidor (SNI)' },
+                  ].map((opt) => (
+                    <button 
+                      key={opt.id}
+                      onClick={() => setGeralOptions(prev => ({ ...prev, [opt.id]: !prev[opt.id as keyof typeof geralOptions] }))}
+                      className="flex items-center gap-3 w-full text-left py-2"
+                    >
+                      <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+                        geralOptions[opt.id as keyof typeof geralOptions] ? 'bg-[#006064] border-[#006064]' : 'border-zinc-400'
+                      }`}>
+                        {geralOptions[opt.id as keyof typeof geralOptions] && <CheckCircle className="w-3.5 h-3.5 text-white" />}
+                      </div>
+                      <span className="text-sm text-zinc-500">{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* SSH Section */}
+          {protocols.ssh && (
+            <div className="bg-white rounded shadow-sm overflow-hidden">
+              <button 
+                onClick={() => setExpandedSection(expandedSection === 'ssh' ? null : 'ssh')}
+                className="w-full p-4 flex items-center justify-between hover:bg-zinc-50 transition-colors"
+              >
+                <span className="text-sm text-zinc-700">Modo seguro (SSH)</span>
+                <ChevronDown className={`w-5 h-5 text-zinc-400 transition-transform ${expandedSection === 'ssh' ? 'rotate-180' : ''}`} />
+              </button>
+              
+              {expandedSection === 'ssh' && (
+                <div className="p-4 pt-0 space-y-4 bg-zinc-50/50">
+                  {[
+                    { id: 'hostPort', label: 'SSH Host e Porta' },
+                    { id: 'userPass', label: 'Usuário e Senha SSH' },
+                  ].map((opt) => (
+                    <button 
+                      key={opt.id}
+                      onClick={() => setSshOptions(prev => ({ ...prev, [opt.id]: !prev[opt.id as keyof typeof sshOptions] }))}
+                      className="flex items-center gap-3 w-full text-left py-2"
+                    >
+                      <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+                        sshOptions[opt.id as keyof typeof sshOptions] ? 'bg-[#006064] border-[#006064]' : 'border-zinc-400'
+                      }`}>
+                        {sshOptions[opt.id as keyof typeof sshOptions] && <CheckCircle className="w-3.5 h-3.5 text-white" />}
+                      </div>
+                      <span className="text-sm text-zinc-500">{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Shadowsocks Section */}
+          {protocols.shadowsocks && (
+            <div className="bg-white rounded shadow-sm overflow-hidden">
+              <button 
+                onClick={() => setExpandedSection(expandedSection === 'shadowsocks' ? null : 'shadowsocks')}
+                className="w-full p-4 flex items-center justify-between hover:bg-zinc-50 transition-colors"
+              >
+                <span className="text-sm text-zinc-700">Shadowsocks</span>
+                <ChevronDown className={`w-5 h-5 text-zinc-400 transition-transform ${expandedSection === 'shadowsocks' ? 'rotate-180' : ''}`} />
+              </button>
+              
+              {expandedSection === 'shadowsocks' && (
+                <div className="p-4 pt-0 space-y-4 bg-zinc-50/50">
+                  {/* Geral Sub-section inside Shadowsocks */}
+                  <div className="mt-2 border-t border-zinc-200 pt-2">
+                    <div className="flex items-center justify-between py-2 mb-2">
+                      <span className="text-sm font-medium text-zinc-700">Geral</span>
+                      <ChevronDown className="w-4 h-4 text-zinc-400 rotate-180" />
+                    </div>
+                    <button 
+                      onClick={() => setShadowsocksOptions(prev => ({ ...prev, sni: !prev.sni }))}
+                      className="flex items-center gap-3 w-full text-left py-3 bg-[#E0E0E0] px-3 rounded-sm"
+                    >
+                      <div className={`w-6 h-6 rounded-sm border-2 flex items-center justify-center transition-colors ${
+                        shadowsocksOptions.sni ? 'bg-[#006064] border-[#006064]' : 'border-zinc-400'
+                      }`}>
+                        {shadowsocksOptions.sni && <Check className="w-4 h-4 text-white stroke-[3]" />}
+                      </div>
+                      <span className="text-base text-zinc-600 font-medium">Indicação do Nome do Servidor (SNI)</span>
+                    </button>
+                  </div>
+
+                  {[
+                    { id: 'hostPort', label: 'Servidor, Porta' },
+                    { id: 'password', label: 'Senha' },
+                    { id: 'httpObfs', label: 'Configurações HTTP Obfs' },
+                  ].map((opt) => (
+                    <button 
+                      key={opt.id}
+                      onClick={() => setShadowsocksOptions(prev => ({ ...prev, [opt.id]: !prev[opt.id as keyof typeof shadowsocksOptions] }))}
+                      className="flex items-center gap-3 w-full text-left py-2"
+                    >
+                      <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+                        shadowsocksOptions[opt.id as keyof typeof shadowsocksOptions] ? 'bg-[#006064] border-[#006064]' : 'border-zinc-400'
+                      }`}>
+                        {shadowsocksOptions[opt.id as keyof typeof shadowsocksOptions] && <CheckCircle className="w-3.5 h-3.5 text-white" />}
+                      </div>
+                      <span className="text-sm text-zinc-500">{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* V2Ray Section */}
+          {protocols.v2ray && (
+            <div className="bg-white rounded shadow-sm overflow-hidden">
+              <button 
+                onClick={() => setExpandedSection(expandedSection === 'v2ray' ? null : 'v2ray')}
+                className="w-full p-4 flex items-center justify-between hover:bg-zinc-50 transition-colors"
+              >
+                <span className="text-sm text-zinc-700">V2Ray</span>
+                <ChevronDown className={`w-5 h-5 text-zinc-400 transition-transform ${expandedSection === 'v2ray' ? 'rotate-180' : ''}`} />
+              </button>
+              
+              {expandedSection === 'v2ray' && (
+                <div className="p-4 pt-0 space-y-4 bg-zinc-50/50">
+                  {[
+                    { id: 'editor', label: 'Editor' },
+                    { id: 'hostPort', label: 'Servidor, Porta' },
+                    { id: 'password', label: 'Senha' },
+                  ].map((opt) => (
+                    <button 
+                      key={opt.id}
+                      onClick={() => setV2rayOptions(prev => ({ ...prev, [opt.id]: !prev[opt.id as keyof typeof v2rayOptions] }))}
+                      className="flex items-center gap-3 w-full text-left py-2"
+                    >
+                      <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+                        v2rayOptions[opt.id as keyof typeof v2rayOptions] ? 'bg-[#006064] border-[#006064]' : 'border-zinc-400'
+                      }`}>
+                        {v2rayOptions[opt.id as keyof typeof v2rayOptions] && <CheckCircle className="w-3.5 h-3.5 text-white" />}
+                      </div>
+                      <span className="text-sm text-zinc-500">{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* DNSTT Section */}
+          {showDnstt && (
+            <div className="bg-white rounded shadow-sm overflow-hidden">
+              <button 
+                onClick={() => setExpandedSection(expandedSection === 'dnstt' ? null : 'dnstt')}
+                className="w-full p-4 flex items-center justify-between hover:bg-zinc-50 transition-colors"
+              >
+                <span className="text-sm text-zinc-700">DNSTT</span>
+                <ChevronDown className={`w-5 h-5 text-zinc-400 transition-transform ${expandedSection === 'dnstt' ? 'rotate-180' : ''}`} />
+              </button>
+              
+              {expandedSection === 'dnstt' && (
+                <div className="p-4 pt-0 space-y-4 bg-zinc-50/50">
+                  {[
+                    { id: 'dnsResolver', label: 'Resolvedor DNS' },
+                    { id: 'dnsttSettings', label: 'Configurações do DNSTT' },
+                  ].map((opt) => (
+                    <button 
+                      key={opt.id}
+                      onClick={() => setDnsttOptions(prev => ({ ...prev, [opt.id]: !prev[opt.id as keyof typeof dnsttOptions] }))}
+                      className="flex items-center gap-3 w-full text-left py-2"
+                    >
+                      <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+                        dnsttOptions[opt.id as keyof typeof dnsttOptions] ? 'bg-[#006064] border-[#006064]' : 'border-zinc-400'
+                      }`}>
+                        {dnsttOptions[opt.id as keyof typeof dnsttOptions] && <CheckCircle className="w-3.5 h-3.5 text-white" />}
+                      </div>
+                      <span className="text-sm text-zinc-500">{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Hysteria Section */}
+          {protocols.hysteria && (
+            <div className="bg-white rounded shadow-sm overflow-hidden">
+              <button 
+                onClick={() => setExpandedSection(expandedSection === 'hysteria' ? null : 'hysteria')}
+                className="w-full p-4 flex items-center justify-between hover:bg-zinc-50 transition-colors"
+              >
+                <span className="text-sm text-zinc-700">Hysteria</span>
+                <ChevronDown className={`w-5 h-5 text-zinc-400 transition-transform ${expandedSection === 'hysteria' ? 'rotate-180' : ''}`} />
+              </button>
+              
+              {expandedSection === 'hysteria' && (
+                <div className="p-4 pt-0 space-y-4 bg-zinc-50/50">
+                  {[
+                    { id: 'server', label: 'Servidor' },
+                    { id: 'settings', label: 'Configurações Hysteria' },
+                  ].map((opt) => (
+                    <button 
+                      key={opt.id}
+                      onClick={() => setHysteriaOptions(prev => ({ ...prev, [opt.id]: !prev[opt.id as keyof typeof hysteriaOptions] }))}
+                      className="flex items-center gap-3 w-full text-left py-2"
+                    >
+                      <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+                        hysteriaOptions[opt.id as keyof typeof hysteriaOptions] ? 'bg-[#006064] border-[#006064]' : 'border-zinc-400'
+                      }`}>
+                        {hysteriaOptions[opt.id as keyof typeof hysteriaOptions] && <CheckCircle className="w-3.5 h-3.5 text-white" />}
+                      </div>
+                      <span className="text-sm text-zinc-500">{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Extra Section */}
+          {isAnyProtocolSelected && (
+            <div className="bg-white rounded shadow-sm overflow-hidden">
+              <button 
+                onClick={() => setExpandedSection(expandedSection === 'extra' ? null : 'extra')}
+                className="w-full p-4 flex items-center justify-between hover:bg-zinc-50 transition-colors"
+              >
+                <span className="text-sm text-zinc-700">Extra</span>
+                <ChevronDown className={`w-5 h-5 text-zinc-400 transition-transform ${expandedSection === 'extra' ? 'rotate-180' : ''}`} />
+              </button>
+              
+              {expandedSection === 'extra' && (
+                <div className="p-4 pt-0 space-y-4 bg-zinc-50/50">
+                  {[
+                    { id: 'mobileOnly', label: 'Apenas para rede de dados móvel' },
+                    { id: 'lockOperator', label: 'Bloquear Operador Móvel' },
+                    { id: 'attestDevice', label: 'Atestar Dispositivo 🛡️' },
+                    { id: 'blockRoot', label: 'Dispositivo com Root Bloqueado' },
+                    { id: 'playStoreOnly', label: 'Instalação somente pela Play Store' },
+                    { id: 'blockHwid', label: 'Bloqueio por ID do Dispositivo' },
+                    { id: 'setExpiry', label: 'Defina data de validade' },
+                    { id: 'loginHwid', label: 'Login SSH usando o ID de Hardware' },
+                    { id: 'disableUserSub', label: 'Desativar a substituição do usuário nos tipos de túnel e no servidor' },
+                    { id: 'noTorrent', label: 'Não permitir torrent' },
+                    { id: 'gameMode', label: 'Modo de jogo 🎮 (apenas jogos usam VPN)' },
+                  ].map((opt) => (
+                    <button 
+                      key={opt.id}
+                      onClick={() => setExtraOptions(prev => ({ ...prev, [opt.id]: !prev[opt.id as keyof typeof extraOptions] }))}
+                      className="flex items-center gap-3 w-full text-left py-2"
+                    >
+                      <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+                        extraOptions[opt.id as keyof typeof extraOptions] ? 'bg-[#006064] border-[#006064]' : 'border-zinc-400'
+                      }`}>
+                        {extraOptions[opt.id as keyof typeof extraOptions] && <CheckCircle className="w-3.5 h-3.5 text-white" />}
+                      </div>
+                      <span className="text-sm text-zinc-500">{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Message Input */}
+          <div className="bg-white rounded shadow-sm flex items-center p-4 gap-4">
+            <div className="flex-1">
+              <div className="border border-zinc-300 rounded p-3">
+                <input 
+                  type="text"
+                  placeholder="Mensagem/Nota para usuários (Opc..."
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  className="w-full bg-transparent text-zinc-700 placeholder:text-zinc-400 outline-none text-sm"
+                />
+              </div>
+            </div>
+            <FileText className="w-5 h-5 text-zinc-400" />
           </div>
         </div>
       </div>
@@ -1916,15 +3165,287 @@ const ExportConfigView = ({ onBack }: { onBack: () => void }) => {
   );
 };
 
-export default function App() {
+const DNSConfigurationModal = ({ isOpen, onClose, settings, setSettings }: { isOpen: boolean, onClose: () => void, settings: DNSSettings, setSettings: (v: DNSSettings) => void }) => {
+  if (!isOpen) return null;
+
+  const options = [
+    { id: 'default', title: 'DNS Padrão', subtitle: 'Use o DNS padrão fornecido pelo operador de rede' },
+    { id: 'google', title: 'Google DNS', subtitle: '' },
+    { id: 'cloudflare', title: 'Cloudflare DNS', subtitle: '' },
+    { id: 'alibaba', title: 'Alibaba DNS', subtitle: '' },
+    { id: 'custom', title: 'DNS Customizado', subtitle: '' },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+      <div className="android-card w-full max-w-md flex flex-col overflow-hidden animate-in zoom-in duration-200 bg-[#121212]">
+        <div className="p-4 bg-[#006064] text-white flex items-center gap-4">
+          <button onClick={onClose} className="p-1 hover:bg-white/10 rounded-full transition-colors">
+            <ArrowLeft className="w-6 h-6" />
+          </button>
+          <h3 className="text-xl font-medium">Configurar DNS</h3>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          {options.map((option) => (
+            <div key={option.id} className="space-y-2">
+              <button
+                onClick={() => setSettings({ ...settings, type: option.id as any })}
+                className="w-full flex items-center justify-between group py-2"
+              >
+                <div className="text-left">
+                  <p className={`text-sm font-bold ${settings.type === option.id ? 'text-white' : 'text-zinc-400'}`}>{option.title}</p>
+                  {option.subtitle && <p className="text-[10px] text-zinc-500 mt-1">{option.subtitle}</p>}
+                </div>
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                  settings.type === option.id ? 'border-[#00bcd4]' : 'border-zinc-600'
+                }`}>
+                  {settings.type === option.id && <div className="w-2.5 h-2.5 bg-[#00bcd4] rounded-full" />}
+                </div>
+              </button>
+              
+              {option.id === 'custom' && settings.type === 'custom' && (
+                <div className="pl-2 space-y-4 mt-4 animate-in fade-in duration-300">
+                  <div className="flex items-center gap-4">
+                    <span className="text-xs text-zinc-400 w-12">DNS 1</span>
+                    <div className="flex gap-1">
+                      {settings.customDns1.split('.').map((part, i) => (
+                        <React.Fragment key={i}>
+                          <input
+                            type="text"
+                            value={part}
+                            onChange={(e) => {
+                              const parts = settings.customDns1.split('.');
+                              parts[i] = e.target.value.slice(0, 3);
+                              setSettings({ ...settings, customDns1: parts.join('.') });
+                            }}
+                            className="w-12 bg-transparent border-b border-zinc-700 text-center text-sm text-white focus:border-[#00bcd4] outline-none"
+                          />
+                          {i < 3 && <span className="text-zinc-600">.</span>}
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-xs text-zinc-400 w-12">DNS 2</span>
+                    <div className="flex gap-1">
+                      {settings.customDns2.split('.').map((part, i) => (
+                        <React.Fragment key={i}>
+                          <input
+                            type="text"
+                            value={part}
+                            onChange={(e) => {
+                              const parts = settings.customDns2.split('.');
+                              parts[i] = e.target.value.slice(0, 3);
+                              setSettings({ ...settings, customDns2: parts.join('.') });
+                            }}
+                            className="w-12 bg-transparent border-b border-zinc-700 text-center text-sm text-white focus:border-[#00bcd4] outline-none"
+                          />
+                          {i < 3 && <span className="text-zinc-600">.</span>}
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {option.id !== 'custom' && <div className="h-px bg-white/5 w-full mt-2" />}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const HelpView = ({ onBack }: { onBack: () => void }) => {
+  const supportItems = [
+    { title: 'Tutorial de Configuração', icon: BookOpen, description: 'Aprenda a configurar seu app passo a passo' },
+    { title: 'Problemas de Conexão', icon: Activity, description: 'Soluções para erros comuns de conexão' },
+    { title: 'Falar com Suporte', icon: MessageCircle, description: 'Entre em contato com nossa equipe no Telegram' },
+    { title: 'Perguntas Frequentes', icon: HelpCircle, description: 'Respostas para as dúvidas mais comuns' },
+  ];
+
+  return (
+    <div className="space-y-6 pb-12">
+      <div className="px-4 pt-4">
+        <h2 className="text-2xl font-bold text-white">Ajuda e Suporte</h2>
+        <p className="text-xs text-outline">Encontre soluções para suas dúvidas</p>
+      </div>
+
+      <div className="px-4 space-y-3">
+        {supportItems.map((item, idx) => (
+          <button key={idx} className="android-card p-4 flex items-center gap-4 hover:bg-white/5 transition-colors w-full text-left">
+            <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center shrink-0">
+              <item.icon className="w-6 h-6 text-primary" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-bold text-white text-sm">{item.title}</h3>
+              <p className="text-[11px] text-outline mt-0.5 leading-tight">{item.description}</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-outline" />
+          </button>
+        ))}
+      </div>
+
+      <div className="px-4">
+        <div className="bg-surface-variant/10 p-6 rounded-3xl border border-white/5 text-center space-y-4">
+          <Shield className="w-12 h-12 text-primary mx-auto opacity-50" />
+          <div className="space-y-1">
+            <p className="text-white font-bold">VPN FAST NET PRO</p>
+            <p className="text-xs text-outline">Versão 8.11 Premium</p>
+          </div>
+          <p className="text-[10px] text-outline leading-relaxed">
+            Desenvolvido para oferecer a melhor experiência de navegação segura e privada.
+            Todos os direitos reservados © 2026.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const InjectorModeView = ({ onBack }: { onBack: () => void }) => {
+  const { injectorSettings, setInjectorSettings } = useApp();
+
+  const tunnelModes = [
+    { id: 'ssh', label: 'Modo seguro (SSH)' },
+    { id: 'v2ray', label: 'V2Ray/Xray' },
+    { id: 'hysteria', label: 'Hysteria' },
+    { id: 'shadowsocks', label: 'Shadowsocks' },
+  ];
+
+  const connectViaOptions = [
+    { id: 'direct', label: 'None (Direct)' },
+    { id: 'dnstt', label: 'DNS (DNSTT)' },
+    { id: 'proxy_http', label: 'Proxy HTTP' },
+    { id: 'http_obfs', label: 'HTTP (Obfs)' },
+    { id: 'tls_ssl_proxy', label: 'TLS/SSL Proxy' },
+    { id: 'tls_ssl_obfs', label: 'TLS/SSL (Obfs)' },
+    { id: 'tls_ssl_stunnel', label: 'TLS/SSL (stunnel)' },
+  ];
+
+  const handleSave = () => {
+    toast.success('Configurações de túnel salvas!');
+    onBack();
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-[#121212] animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 bg-[#006064] text-white shadow-md">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="p-1 hover:bg-white/10 rounded-full transition-colors">
+            <ArrowLeft className="w-6 h-6" />
+          </button>
+          <h2 className="text-xl font-medium">Modo de túneis</h2>
+        </div>
+        <button className="p-1 hover:bg-white/10 rounded-full transition-colors">
+          <Clock className="w-6 h-6" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Selected Tunnel Info */}
+        <div className="bg-[#004d40] p-4 rounded-lg shadow-sm">
+          <p className="text-xs font-bold text-white/70 uppercase mb-1">Tipo do túnel selecionado</p>
+          <p className="text-lg font-medium text-white">
+            {injectorSettings.connectVia.includes('tls_ssl') ? 'SSL/TLS' : 'Direct'} → {injectorSettings.tunnelMode.toUpperCase()}
+          </p>
+          <div className="mt-2 inline-block px-2 py-0.5 bg-[#03a9f4] rounded text-[10px] font-bold text-white uppercase">
+            {injectorSettings.connectVia.includes('tls') ? 'TCP (TLS)' : 'TCP'}
+          </div>
+        </div>
+
+        {/* Tunnel Mode Selection */}
+        <div className="bg-[#212121] p-4 rounded-lg shadow-sm space-y-4">
+          <p className="text-sm font-bold text-zinc-400 uppercase tracking-wider">Modo de túneis</p>
+          <div className="grid grid-cols-2 gap-4">
+            {tunnelModes.map((mode) => (
+              <button
+                key={mode.id}
+                onClick={() => setInjectorSettings({ ...injectorSettings, tunnelMode: mode.id as any })}
+                className="flex items-center gap-3 group"
+              >
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                  injectorSettings.tunnelMode === mode.id ? 'border-primary' : 'border-zinc-600'
+                }`}>
+                  {injectorSettings.tunnelMode === mode.id && <div className="w-2.5 h-2.5 bg-primary rounded-full" />}
+                </div>
+                <span className={`text-sm transition-colors ${
+                  injectorSettings.tunnelMode === mode.id ? 'text-white' : 'text-zinc-400'
+                }`}>{mode.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Connect Via Selection */}
+        <div className="bg-[#212121] p-4 rounded-lg shadow-sm space-y-4">
+          <p className="text-sm font-bold text-zinc-400 uppercase tracking-wider">Conectar via</p>
+          <div className="grid grid-cols-2 gap-y-4 gap-x-2">
+            {connectViaOptions.map((option) => (
+              <button
+                key={option.id}
+                onClick={() => setInjectorSettings({ ...injectorSettings, connectVia: option.id as any })}
+                className="flex items-center gap-3 group"
+              >
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                  injectorSettings.connectVia === option.id ? 'border-primary' : 'border-zinc-600'
+                }`}>
+                  {injectorSettings.connectVia === option.id && <div className="w-2.5 h-2.5 bg-primary rounded-full" />}
+                </div>
+                <span className={`text-sm transition-colors ${
+                  injectorSettings.connectVia === option.id ? 'text-white' : 'text-zinc-400'
+                }`}>{option.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Options */}
+        <div className="bg-[#212121] p-4 rounded-lg shadow-sm space-y-4">
+          <p className="text-sm font-bold text-zinc-400 uppercase tracking-wider">Opções</p>
+          <button
+            onClick={() => setInjectorSettings({ ...injectorSettings, customPayload: !injectorSettings.customPayload })}
+            className="flex items-center gap-3 group"
+          >
+            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+              injectorSettings.customPayload ? 'bg-primary border-primary' : 'border-zinc-600'
+            }`}>
+              {injectorSettings.customPayload && <CheckCircle className="w-4 h-4 text-on-primary" />}
+            </div>
+            <span className={`text-sm transition-colors ${
+              injectorSettings.customPayload ? 'text-white' : 'text-zinc-400'
+            }`}>Custom Payload</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Save Button */}
+      <div className="p-4">
+        <button
+          onClick={handleSave}
+          className="w-full py-4 bg-zinc-600 hover:bg-zinc-500 text-white font-bold uppercase tracking-widest rounded transition-colors shadow-lg"
+        >
+          Salvar
+        </button>
+      </div>
+    </div>
+  );
+};
+
+function MainContent() {
   const [showSplash, setShowSplash] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('home');
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
+  const { skipSplash } = useApp();
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'home': return <Dashboard setActiveTab={setActiveTab} />;
+      case 'home': return <Dashboard activeTab={activeTab} setActiveTab={setActiveTab} />;
+      case 'custom': return <CustomOnView />;
       case 'tools': return <ToolsView />;
       case 'settings': return <SettingsView />;
       case 'notes': return <UpdateNotes />;
@@ -1940,77 +3461,99 @@ export default function App() {
       case 'addtweaks': return <AddOwnTweaks />;
       case 'exportconfig': return <ExportConfigView onBack={() => setActiveTab('home')} />;
       case 'importconfig': return <ImportConfigView onBack={() => setActiveTab('home')} />;
-      default: return <Dashboard setActiveTab={setActiveTab} />;
+      case 'injector': return <InjectorModeView onBack={() => setActiveTab('home')} />;
+      case 'help': return <HelpView onBack={() => setActiveTab('home')} />;
+      default: return <Dashboard activeTab={activeTab} setActiveTab={setActiveTab} />;
     }
   };
 
   return (
-    <AppProvider>
-      <AnimatePresence mode="wait">
-        {showSplash ? (
-          <SplashScreen key="splash" onComplete={() => setShowSplash(false)} />
-        ) : (
-          <motion.div 
-            key="main-app"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5 }}
-            className="min-h-screen flex flex-col bg-surface text-on-surface select-none"
-          >
-            <Toaster position="top-center" theme="dark" richColors />
-            <Header 
-              onOpenUpdate={() => setIsUpdateModalOpen(true)} 
-              onOpenDrawer={() => setIsDrawerOpen(true)}
-              activeTab={activeTab}
-              setActiveTab={setActiveTab}
-            />
-            
-            <main className="flex-1 overflow-y-auto pb-24 px-4 pt-4">
-              <div className="max-w-md mx-auto w-full">
-                {renderContent()}
-              </div>
-            </main>
-
-            <BottomNavigation activeTab={activeTab} setActiveTab={setActiveTab} />
-            
-            <AndroidDrawer 
-              isOpen={isDrawerOpen} 
-              onClose={() => setIsDrawerOpen(false)} 
+    <AnimatePresence mode="wait">
+      {showSplash && !skipSplash ? (
+        <SplashScreen key="splash" onComplete={() => setShowSplash(false)} />
+      ) : (
+        <motion.div 
+          key="main-app"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5 }}
+          className="min-h-screen flex flex-col bg-surface text-on-surface select-none"
+        >
+          <Toaster position="top-center" theme="dark" richColors />
+          
+          {['home', 'notes', 'tools', 'help'].includes(activeTab) && (
+            <TopTabs 
               activeTab={activeTab} 
               setActiveTab={setActiveTab} 
+              onOpenDrawer={() => setIsDrawerOpen(true)}
+              onOpenHelp={() => setIsHelpModalOpen(true)}
             />
-            
-            <UpdateResourcesModal 
-              isOpen={isUpdateModalOpen} 
-              onClose={() => setIsUpdateModalOpen(false)} 
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+
+          <main className="flex-1 overflow-y-auto pb-24">
+            <div className="max-w-md mx-auto w-full">
+              {renderContent()}
+            </div>
+          </main>
+
+          <BottomNavigation activeTab={activeTab} setActiveTab={setActiveTab} />
+          
+          <AndroidDrawer 
+            isOpen={isDrawerOpen} 
+            onClose={() => setIsDrawerOpen(false)} 
+            activeTab={activeTab} 
+            setActiveTab={setActiveTab} 
+          />
+          
+          <UpdateResourcesModal 
+            isOpen={isUpdateModalOpen} 
+            onClose={() => setIsUpdateModalOpen(false)} 
+          />
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+export default function App() {
+  return (
+    <AppProvider>
+      <MainContent />
     </AppProvider>
   );
 }
 
 const BottomNavigation = ({ activeTab, setActiveTab }: { activeTab: Tab, setActiveTab: (t: Tab) => void }) => {
+  const { setIsServerModalOpen, setIsPortModalOpen } = useApp();
   const items = [
     { id: 'home', label: 'Início', icon: Activity },
     { id: 'notes', label: 'Registro', icon: FileText },
     { id: 'tools', label: 'Ferramentas', icon: Terminal },
+    { id: 'custom', label: 'Modo Ha Tunnel', icon: Filter },
+    { id: 'injector', label: 'Modo Injector', icon: ShieldCheck },
+    { id: 'servers', label: 'Servidores', icon: Globe, action: () => setIsServerModalOpen(true) },
+    { id: 'ports', label: 'Porta', icon: Network, action: () => setIsPortModalOpen(true) },
     { id: 'settings', label: 'Ajustes', icon: Settings },
   ];
 
   return (
-    <nav className="android-bottom-nav">
+    <nav className="android-bottom-nav overflow-x-auto no-scrollbar justify-start px-2 gap-1">
       {items.map((item) => (
         <button
           key={item.id}
-          onClick={() => setActiveTab(item.id as Tab)}
-          className={`android-nav-item ${activeTab === item.id ? 'active' : 'text-outline'}`}
+          onClick={() => {
+            if (item.action) {
+              item.action();
+            } else {
+              setActiveTab(item.id as Tab);
+            }
+          }}
+          className={`android-nav-item min-w-[64px] ${activeTab === item.id ? 'active' : 'text-outline'}`}
         >
           <div className={`android-nav-indicator ${activeTab === item.id ? 'opacity-100' : 'bg-transparent opacity-0'}`}>
             <item.icon className={`w-6 h-6 ${activeTab === item.id ? 'text-on-primary-container' : 'text-outline'}`} />
           </div>
-          <span className="text-[11px] font-medium">{item.label}</span>
+          <span className="text-[10px] font-medium whitespace-nowrap">{item.label}</span>
         </button>
       ))}
     </nav>
@@ -2022,6 +3565,7 @@ const AndroidDrawer = ({ isOpen, onClose, activeTab, setActiveTab }: { isOpen: b
     { id: 'home', label: 'Início', icon: Activity },
     { id: 'notes', label: 'Registro', icon: FileText },
     { id: 'tools', label: 'Ferramentas', icon: Terminal },
+    { id: 'injector', label: 'Modo Injector', icon: ShieldCheck },
     { type: 'separator' },
     { id: 'iphunter', label: 'Verificar IP', icon: Eye },
     { id: 'tether', label: 'Rede Móvel', icon: Radio },
