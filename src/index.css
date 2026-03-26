@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+@theme {
+  --font-mono: "JetBrains Mono", "Roboto Mono", monospace;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --animate-spin-slow: spin 8s linear infinite;
+  
+  /* Material Design 3 Colors (Dark Mode) */
+  --color-primary: #D0BCFF;
+  --color-on-primary: #381E72;
+  --color-primary-container: #4F378B;
+  --color-on-primary-container: #EADDFF;
+  --color-secondary: #CCC2DC;
+  --color-on-secondary: #332D41;
+  --color-secondary-container: #4A4458;
+  --color-on-secondary-container: #E8DEF8;
+  --color-surface: #1C1B1F;
+  --color-on-surface: #E6E1E5;
+  --color-surface-variant: #49454F;
+  --color-on-surface-variant: #CAC4D0;
+  --color-outline: #938F99;
+}
+
+@layer base {
+  body {
+    @apply bg-[#1C1B1F] text-[#E6E1E5] font-sans antialiased overflow-x-hidden select-none touch-manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer components {
+  .android-card {
+    @apply bg-[#25232A] rounded-[28px] p-6 shadow-md transition-all active:scale-[0.98];
+  }
+  
+  .android-list-item {
+    @apply flex items-center gap-4 p-4 rounded-2xl hover:bg-white/5 active:bg-white/10 transition-colors;
+  }
+
+  .android-fab {
+    @apply fixed bottom-24 right-6 w-14 h-14 rounded-2xl bg-primary text-on-primary shadow-lg flex items-center justify-center transition-transform active:scale-90 z-50;
+  }
+
+  .android-bottom-nav {
+    @apply fixed bottom-0 left-0 right-0 h-20 bg-[#1C1B1F] border-t border-white/5 flex items-center justify-around px-2 z-50;
+  }
+
+  .android-nav-item {
+    @apply flex flex-col items-center gap-1 text-xs font-medium transition-colors;
+  }
+
+  .android-nav-item.active {
+    @apply text-primary;
+  }
+
+  .android-nav-indicator {
+    @apply w-16 h-8 rounded-full bg-primary-container flex items-center justify-center mb-1 transition-all;
+  }
+
+  .android-input {
+    @apply w-full bg-surface-variant/30 border-b-2 border-outline/30 px-4 py-3 rounded-t-xl text-on-surface focus:border-primary focus:bg-surface-variant/50 outline-none transition-all placeholder:text-outline/50;
+  }
+
+  .android-btn-primary {
+    @apply w-full bg-primary text-on-primary font-bold py-4 rounded-full shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2 disabled:opacity-50 disabled:active:scale-100;
+  }
+
+  .android-btn-tonal {
+    @apply w-full bg-secondary-container text-on-secondary-container font-bold py-4 rounded-full active:scale-95 transition-transform flex items-center justify-center gap-2;
+  }
+
+  .android-section-title {
+    @apply text-xs font-bold text-primary uppercase tracking-[0.2em] px-4 mb-4 mt-8;
+  }
+
+  .data-value {
+    @apply font-mono text-primary;
+  }
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');

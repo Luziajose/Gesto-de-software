@@ -1,0 +1,7 @@
+{
+  "name": "Remix: VPN FAST NET PRO",
+  "description": "A professional network utility and tunneling dashboard for advanced network configuration, payload generation, and connectivity testing.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
